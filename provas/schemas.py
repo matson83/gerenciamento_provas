@@ -1,5 +1,17 @@
 from ninja import Schema
 from typing import List
+# provas/schemas.py
+from ninja import Schema
+from typing import Optional
+
+class ProvaIn(Schema):
+    titulo: str
+    descricao: str
+
+class ProvaOut(ProvaIn):
+    id: int
+    criada_por_id: int
+
 
 class AlternativaOut(Schema):
     id: int

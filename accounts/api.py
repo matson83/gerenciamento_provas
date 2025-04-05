@@ -1,14 +1,15 @@
 from ninja import NinjaAPI, Schema
-from ninja.security import HttpBearer
-from ninja.errors import HttpError
+from accounts.auth import AuthBearer  # ✅ certo agora
 from django.contrib.auth import authenticate
 from ninja_jwt.tokens import RefreshToken
 from .models import CustomUser
-from provas.routers import router as provas_router
 
+from provas.routers import include_routers
 
 api = NinjaAPI()
+include_routers(api)
 
+# Schemas
 class LoginSchema(Schema):
     username: str
     password: str
@@ -18,18 +19,6 @@ class RegisterSchema(Schema):
     password: str
     email: str
     role: str
-
-class AuthBearer(HttpBearer):
-    def authenticate(self, request, token):
-        from ninja_jwt.authentication import JWTAuth
-        jwt_auth = JWTAuth()
-        try:
-            validated_token = jwt_auth.get_validated_token(token)
-            user = jwt_auth.get_user(validated_token)
-            if user.is_active:
-                return user
-        except Exception:
-            raise HttpError(401, "Token inválido")
 
 @api.post("/auth/registro")
 def registrar(request, payload: RegisterSchema):
@@ -77,10 +66,3 @@ def dashboard_admin(request):
 @api.get("/participante/dashboard", auth=AuthBearer())
 def dashboard_participante(request):
     return {"message": f"Olá {request.auth.username}"}
-
-api.add_router("/provas/", provas_router)
-
-from ninja import NinjaAPI
-from provas.routers import router as provas_router
-
-

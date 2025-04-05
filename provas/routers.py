@@ -4,8 +4,31 @@ from django.shortcuts import get_object_or_404
 from accounts.models import Prova, Questao, Alternativa, Resposta
 from django.contrib.auth.models import User
 from .schemas import *
+from typing import List
+from ninja.errors import HttpError
+from accounts.auth import JWTAuth
+from provas.routers import include_routers
+from ninja import NinjaAPI
 
 router = Router()
+
+api = NinjaAPI()
+
+include_routers(api)
+
+admin_router = Router(auth=JWTAuth())
+
+class ParticipanteOut(Schema):
+    id: int
+    username: str
+
+@admin_router.get("/participantes", response=List[ParticipanteOut])
+def listar_participantes(request):
+    if request.auth and getattr(request.auth, "role", None) != "ADMIN":
+        raise HttpError(403, "Acesso negado")
+
+    participantes = User.objects.filter(role="PARTICIPANTE")
+    return participantes
 
 def is_admin(user):
     return user.is_authenticated and user.is_staff
@@ -119,3 +142,10 @@ def ranking_participantes(request, prova_id: int):
 
     # ordena por acertos decrescentes
     return sorted(ranking, key=lambda x: x.acertos, reverse=True)
+
+# provas/routers.py
+from .routers import admin_router as provas_admin_router
+
+
+def include_routers(api):
+    api.add_router("/provas/admin", provas_admin_router)
