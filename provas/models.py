@@ -6,6 +6,7 @@ class Prova(models.Model):
     descricao = models.TextField(blank=True)
     criada_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     data_criacao = models.DateTimeField(auto_now_add=True)
+    participantes = models.ManyToManyField("accounts.CustomUser", related_name="provas_designadas")
 
 class Questao(models.Model):
     prova = models.ForeignKey(Prova, related_name="questoes", on_delete=models.CASCADE)
@@ -19,7 +20,7 @@ class Alternativa(models.Model):
 
 class ProvaParticipante(models.Model):
     prova = models.ForeignKey(Prova, on_delete=models.CASCADE)
-    participante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    participante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,related_name="provas")
     respondida = models.BooleanField(default=False)
 
     class Meta:

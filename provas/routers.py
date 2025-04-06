@@ -24,7 +24,7 @@ class ParticipanteOut(Schema):
 
 @admin_router.get("/participantes", response=List[ParticipanteOut])
 def listar_participantes(request):
-    if request.auth and getattr(request.auth, "role", None) != "ADMIN":
+    if not request.auth or getattr(request.auth, "role", "") != "ADMIN":
         raise HttpError(403, "Acesso negado")
 
     participantes = User.objects.filter(role="PARTICIPANTE")

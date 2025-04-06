@@ -23,7 +23,7 @@ class ProvaCreateSchema(Schema):
 
 class AtribuirProvaSchema(Schema):
     prova_id: int
-    participante_id: int
+    participantes_ids: List[int]
 
 # Endpoint: Criar Prova
 @router.post("/criar", auth=AuthBearer())
@@ -55,8 +55,20 @@ def atribuir_prova(request, payload: AtribuirProvaSchema):
         return {"error": "Apenas admins podem atribuir provas."}
     
     prova = get_object_or_404(Prova, id=payload.prova_id)
-    ProvaParticipante.objects.create(
-        prova=prova,
-        participante_id=payload.participante_id
-    )
-    return {"message": "Prova atribuída com sucesso"}
+    
+    atribuicoes = []
+    for participante_id in payload.participantes_ids:
+        atribuicao, created = ProvaParticipante.objects.get_or_create(
+            prova=prova,
+            participante_id=participante_id
+        )
+        atribuicoes.append({
+            "participante_id": participante_id,
+            "status": "criado" if created else "já existia"
+        })
+
+    return {
+        "message": "Prova atribuída com sucesso",
+        "atribuidos": atribuicoes
+    }
+

@@ -35,7 +35,7 @@ class ProvaCreate(Schema):
 class QuestaoCreate(Schema):
     enunciado: str
     alternativas: List[str]
-    correta: int  # índice da alternativa correta
+    correta: int 
 
 class RespostaCreate(Schema):
     questao_id: int
@@ -55,3 +55,15 @@ class RankingEntry(Schema):
     participante_id: int
     nome: str
     acertos: int
+
+class RespostaSchema(Schema):
+    questao_id: int
+    alternativa_id: int
+
+class ResponderProvaSchema(Schema):
+    prova_id: int
+    respostas: List[RespostaSchema]
+
+class ParticipanteOut(Schema):
+    id: int
+    username: str
