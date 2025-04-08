@@ -1,5 +1,5 @@
 from ninja import NinjaAPI, Schema
-from accounts.auth import AuthBearer  # ✅ certo agora
+from accounts.auth import AuthBearer
 from django.contrib.auth import authenticate
 from ninja_jwt.tokens import RefreshToken
 from .models import CustomUser
@@ -17,7 +17,7 @@ from typing import Optional
 api = NinjaAPI()
 include_routers(api)
 
-# Schemas
+# Schemas Lofin e Registro
 class LoginSchema(Schema):
     username: str
     password: str
@@ -28,10 +28,29 @@ class RegisterSchema(Schema):
     email: str
     role: str
 
+# Schemas Prova
 class ProvaResumo(Schema):
     id: int
     titulo: str
     descricao: str
+
+class ProvaParticipanteBase(Schema):
+    participante_id: int
+    prova_id: int
+
+class ProvaParticipanteUpdate(Schema):
+    respondida: Optional[bool] = None
+    score: Optional[float] = None
+
+class ProvaParticipanteOut(Schema):
+    id: int
+    participante_id: int
+    prova_id: int
+    respondida: bool
+    score: Optional[float]
+
+    class Config:
+        orm_mode = True
 
 class ParticipanteDashboard(Schema):
     id: int
@@ -39,7 +58,7 @@ class ParticipanteDashboard(Schema):
     provas: List[ProvaResumo]
 
 class AlternativaUpdateSchema(Schema):
-    id: int
+    id: Optional[int] = None
     texto: str
     correta: bool
 
@@ -71,6 +90,9 @@ class ProvaCreateSchema(Schema):
 class AtribuirProvaSchema(Schema):
     prova_id: int
     participantes_ids: List[int]
+
+
+################ Modulo Login e Registro
 
 @api.post("/auth/registro")
 def registrar(request, payload: RegisterSchema):
@@ -109,8 +131,11 @@ def login(request, payload: LoginSchema):
         }
     }
 
-@api.get("/admin/dashboard", auth=AuthBearer())
-def dashboard_admin(request):
+
+################ Modulo Admin Provas e Questões
+
+@api.get("admin/provas", auth=AuthBearer())
+def listar_provas(request):
     if not request.auth.is_admin():
         raise HttpError(403, "Acesso restrito a administradores")
 
@@ -129,63 +154,29 @@ def dashboard_admin(request):
 
     return result
 
-@api.get("admin/provas", auth=AuthBearer())
-def listar_provas(request):
-    if not request.auth.is_admin():
-        raise HttpError(403, "Apenas admins podem visualizar as provas.")
+@api.get("admin/provas/participantes_controle", response=List[ProvaParticipanteOut])
+def listar_participantes_controle(request):
+    return ProvaParticipante.objects.all()
 
-    provas = Prova.objects.prefetch_related("questoes__alternativas").all()
+@api.put("admin/provas/participantes_controle/{participacao_id}", response=ProvaParticipanteOut)
+def editar_participante(request, participacao_id: int, data: ProvaParticipanteUpdate):
+    participacao = get_object_or_404(ProvaParticipante, id=participacao_id)
 
-    resultado = []
-    for prova in provas:
-        questoes = []
-        for questao in prova.questoes.all():
-            alternativas = [
-                {
-                    "id": alt.id,
-                    "texto": alt.texto,
-                    "correta": alt.correta
-                } for alt in questao.alternativas.all()
-            ]
-            questoes.append({
-                "id": questao.id,
-                "enunciado": questao.enunciado,
-                "alternativas": alternativas
-            })
+    if data.respondida is not None:
+        participacao.respondida = data.respondida
+    if data.score is not None:
+        participacao.score = data.score
 
-        resultado.append({
-            "id": prova.id,
-            "titulo": prova.titulo,
-            "descricao": prova.descricao,
-            "questoes": questoes
-        })
+    participacao.save()
+    return participacao
 
-    return resultado
+@api.delete("admin/provas/participantes_controle/{participacao_id}")
+def remover_participante(request, participacao_id: int):
+    participacao = get_object_or_404(ProvaParticipante, id=participacao_id)
+    participacao.delete()
+    return {"success": True, "message": "Participante removido da prova."}
 
-
-@api.post("admin/provas/criar", auth=AuthBearer())
-def criar_prova(request, payload: ProvaCreateSchema):
-    if not request.auth.is_admin():
-        return {"error": "Apenas admins podem criar provas."}
-
-    prova = Prova.objects.create(
-        titulo=payload.titulo,
-        descricao=payload.descricao,
-        criada_por=request.auth
-    )
-
-    for questao_data in payload.questoes:
-        questao = Questao.objects.create(prova=prova, enunciado=questao_data.enunciado)
-        for alt_data in questao_data.alternativas:
-            Alternativa.objects.create(
-                questao=questao,
-                texto=alt_data.texto,
-                correta=alt_data.correta
-            )
-
-    return {"message": "Prova criada com sucesso", "prova_id": prova.id}
-
-@api.get("/admin/provas/{prova_id}/detalhes", auth=AuthBearer())
+@api.get("/admin/provas/detalhes/{prova_id}", auth=AuthBearer())
 def detalhes_prova(request, prova_id: int):
     if not request.auth.is_admin():
         raise HttpError(403, "Apenas administradores podem acessar os detalhes da prova")
@@ -217,7 +208,30 @@ def detalhes_prova(request, prova_id: int):
     return resultado
 
 
-# Endpoint: Atribuir Prova a Participante
+
+
+@api.post("admin/provas/criar", auth=AuthBearer())
+def criar_prova(request, payload: ProvaCreateSchema):
+    if not request.auth.is_admin():
+        return {"error": "Apenas admins podem criar provas."}
+
+    prova = Prova.objects.create(
+        titulo=payload.titulo,
+        descricao=payload.descricao,
+        criada_por=request.auth
+    )
+
+    for questao_data in payload.questoes:
+        questao = Questao.objects.create(prova=prova, enunciado=questao_data.enunciado)
+        for alt_data in questao_data.alternativas:
+            Alternativa.objects.create(
+                questao=questao,
+                texto=alt_data.texto,
+                correta=alt_data.correta
+            )
+
+    return {"message": "Prova criada com sucesso", "prova_id": prova.id}
+
 @api.post("admin/provas/atribuir", auth=AuthBearer())
 def atribuir_prova(request, payload: AtribuirProvaSchema):
     if not request.auth.is_admin():
@@ -240,7 +254,6 @@ def atribuir_prova(request, payload: AtribuirProvaSchema):
         "message": "Prova atribuída com sucesso",
         "atribuidos": atribuicoes
     }
-
 
 @api.put("admin/provas/{prova_id}", auth=AuthBearer())
 def editar_prova(request, prova_id: int, payload: ProvaUpdateSchema):
@@ -274,8 +287,11 @@ def deletar_prova(request, prova_id: int):
     prova.delete()
     return {"message": "Prova deletada com sucesso"}
 
-@api.put("admin/provas/questoes/{questao_id}", auth=AuthBearer())
-def editar_questao(request, questao_id: int, payload: QuestaoUpdateSchema):
+
+################# Modulo Admin Questões (Editar e Deletar)
+
+@api.put("admin/provas/{prova_id}/questoes/{questao_id}", auth=AuthBearer())
+def editar_questao(request, prova_id:int,questao_id: int, payload: QuestaoUpdateSchema):
     if not request.auth.is_admin():
         raise HttpError(403, "Apenas admins podem editar questões.")
 
@@ -283,16 +299,20 @@ def editar_questao(request, questao_id: int, payload: QuestaoUpdateSchema):
     questao.enunciado = payload.enunciado
     questao.save()
 
+    alternativas_existentes = {a.id: a for a in questao.alternativas.all()}
+
     for alt_data in payload.alternativas:
-        alternativa = get_object_or_404(Alternativa, id=alt_data.id, questao=questao)
-        alternativa.texto = alt_data.texto
-        alternativa.correta = alt_data.correta
-        alternativa.save()
+        alt = alternativas_existentes.get(alt_data.id)
+        if not alt:
+            raise HttpError(404, f"Alternativa com id {alt_data.id} não pertence à questão")
+        alt.texto = alt_data.texto
+        alt.correta = alt_data.correta
+        alt.save()
 
     return {"message": "Questão atualizada com sucesso"}
 
-@api.delete("admin/provas/questoes/{questao_id}", auth=AuthBearer())
-def deletar_questao(request, questao_id: int):
+@api.delete("admin/provas/{prova_id}/questoes/{questao_id}", auth=AuthBearer())
+def deletar_questao(request, prova_id:int ,questao_id: int):
     if not request.auth.is_admin():
         raise HttpError(403, "Apenas admins podem deletar questões.")
 
@@ -301,30 +321,111 @@ def deletar_questao(request, questao_id: int):
 
     return {"message": "Questão deletada com sucesso"}
 
+################ Modulo Admin Alternativas (Editar e Deletar)
+
+@api.put("/admin/provas/{prova_id}/questoes/{questao_id}/alternativas", auth=AuthBearer())
+def editar_alternativas(
+    request,
+    prova_id: int,
+    questao_id: int,
+    payload: List[AlternativaUpdateSchema]
+):
+    if not request.auth.is_admin():
+        raise HttpError(403, "Apenas admins podem editar alternativas.")
+
+    prova = get_object_or_404(Prova, id=prova_id)
+    questao = get_object_or_404(Questao, id=questao_id, prova=prova)
+
+    alternativas_existentes = {a.id: a for a in questao.alternativas.all()}
+
+    atualizadas = []
+    criadas = []
+
+    for alt_data in payload:
+        if alt_data.id and alt_data.id in alternativas_existentes:
+            alt = alternativas_existentes[alt_data.id]
+            alt.texto = alt_data.texto
+            alt.correta = alt_data.correta
+            alt.save()
+            atualizadas.append(alt.id)
+        else:
+            nova = Alternativa.objects.create(
+                questao=questao,
+                texto=alt_data.texto,
+                correta=alt_data.correta
+            )
+            criadas.append(nova.id)
+
+    return {
+        "message": "Alternativas processadas com sucesso.",
+        "alternativas_atualizadas": atualizadas,
+        "alternativas_criadas": criadas
+    }
+
+@api.delete("/admin/provas/{prova_id}/questoes/{questao_id}/alternativas/{alternativa_id}", auth=AuthBearer())
+def deletar_alternativa(request, prova_id:int,questao_id:int,alternativa_id: int):
+    if not request.auth.is_admin():
+        raise HttpError(403, "Apenas admins podem deletar alternativas.")
+
+    alternativa = get_object_or_404(Alternativa, id=alternativa_id)
+    alternativa.delete()
+
+    return {"message": "Alternativa deletada com sucesso"}
+
+################ Modulo Participante Dashboard
+
 @api.get("/participante/dashboard", auth=AuthBearer())
 def dashboard_participante(request):
     user = request.auth
+
     if not user.is_authenticated or user.role != "PARTICIPANTE":
         raise HttpError(403, "Acesso restrito a participantes")
-    
-    provas_participante = user.provas.select_related("prova").all()
-    
-    provas = [
-        {
-            "id": pp.prova.id,
-            "titulo": pp.prova.titulo,
-            "descricao": pp.prova.descricao
-        }
-        for pp in provas_participante
-    ]
+
+    provas_participante = (
+        user.provas.select_related("prova")
+        .prefetch_related("prova__questoes__alternativas")
+        .all()
+    )
+
+    provas = []
+
+    for pp in provas_participante:
+        prova = pp.prova
+        questoes_data = []
+
+        for questao in prova.questoes.all():
+            alternativas_data = [
+                {
+                    "id": alt.id,
+                    "texto": alt.texto
+                }
+                for alt in questao.alternativas.all()
+            ]
+
+            questoes_data.append({
+                "id": questao.id,
+                "enunciado": questao.enunciado,
+                "alternativas": alternativas_data
+            })
+
+        provas.append({
+            "id": prova.id,
+            "titulo": prova.titulo,
+            "descricao": prova.descricao,
+            "respondida": pp.respondida,
+            "score": pp.score,
+            "questoes": questoes_data
+        })
 
     return {
         "message": f"Olá {user.username}",
         "provas_atribuidas": provas
     }
 
-@api.post("/participante/responder", auth=AuthBearer())
-def responder_prova(request, payload: ResponderProvaSchema):
+############### Modulo Participante Responder Provas
+
+@api.post("/participante/responder/{prova_id}", auth=AuthBearer())
+def responder_prova(request,prova_id:int, payload: ResponderProvaSchema):
     user = request.auth
 
     if user.role != "PARTICIPANTE":
@@ -347,7 +448,6 @@ def responder_prova(request, payload: ResponderProvaSchema):
             questao_id=resposta.questao_id,
             defaults={"alternativa_escolhida_id": resposta.alternativa_id}
         )
-        # Verificar se a alternativa escolhida está correta
         if obj.alternativa_escolhida.correta:
             acertos += 1
 
@@ -359,6 +459,8 @@ def responder_prova(request, payload: ResponderProvaSchema):
         "total_questoes": total,
         "nota_percentual": nota
     }
+
+################ Modulo Admin Ranking
 
 @api.get("/admin/ranking/{prova_id}", auth=AuthBearer())
 def ranking_por_prova(request, prova_id: int):
