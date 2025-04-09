@@ -28,10 +28,7 @@ class ProvaParticipante(models.Model):
     respondida = models.BooleanField(default=False)
     score = models.FloatField(null=True, blank=True)
     
-
-
-
 class Resposta(models.Model):
-    prova_atribuida = models.ForeignKey(ProvaParticipante, on_delete=models.CASCADE)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,null=True)
     questao = models.ForeignKey(Questao, on_delete=models.CASCADE)
-    alternativa_escolhida = models.ForeignKey(Alternativa, on_delete=models.CASCADE)
+    alternativa = models.ForeignKey(Alternativa, on_delete=models.CASCADE,null=True)

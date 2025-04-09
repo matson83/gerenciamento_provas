@@ -1,6 +1,5 @@
 from ninja import Schema
 from typing import List
-# provas/schemas.py
 from ninja import Schema
 from typing import Optional
 
@@ -64,6 +63,3 @@ class ResponderProvaSchema(Schema):
     prova_id: int
     respostas: List[RespostaSchema]
 
-class ParticipanteOut(Schema):
-    id: int
-    username: str

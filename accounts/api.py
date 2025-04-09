@@ -59,18 +59,17 @@ class ParticipanteDashboard(Schema):
 
 class AlternativaUpdateSchema(Schema):
     id: Optional[int] = None
-    texto: str
-    correta: bool
+    texto: Optional[str] = None
+    correta: Optional[bool] = None
 
 class QuestaoUpdateSchema(Schema):
-    id: int
-    enunciado: str
-    alternativas: List[AlternativaUpdateSchema]
+    enunciado: Optional[str] = None
+    alternativas: Optional[List[AlternativaUpdateSchema]] = None
 
 class ProvaUpdateSchema(Schema):
-    titulo: str
-    descricao: str
-    questoes: List[QuestaoUpdateSchema]
+    titulo: Optional[str] = None
+    descricao: Optional[str] = None
+    questoes: Optional[List[QuestaoUpdateSchema]] = None
 
 class AlternativaSchema(Schema):
     id: Optional[int] = None  
@@ -78,14 +77,13 @@ class AlternativaSchema(Schema):
     correta: bool
 
 class QuestaoSchema(Schema):
-    id: int
     enunciado: str
     alternativas: List[AlternativaSchema]
 
 class ProvaCreateSchema(Schema):
     titulo: str
     descricao: str = ""
-    questoes: List[QuestaoUpdateSchema]
+    questoes: List[QuestaoSchema]
 
 class AtribuirProvaSchema(Schema):
     prova_id: int
@@ -265,16 +263,17 @@ def editar_prova(request, prova_id: int, payload: ProvaUpdateSchema):
     prova.descricao = payload.descricao
     prova.save()
 
-    for questao_data in payload.questoes:
-        questao = get_object_or_404(Questao, id=questao_data.id, prova=prova)
-        questao.enunciado = questao_data.enunciado
-        questao.save()
+    if payload.questoes:
+        for questao_data in payload.questoes:
+            questao = get_object_or_404(Questao, id=questao_data.id, prova=prova)
+            questao.enunciado = questao_data.enunciado
+            questao.save()
 
-        for alt_data in questao_data.alternativas:
-            alt = get_object_or_404(Alternativa, id=alt_data.id, questao=questao)
-            alt.texto = alt_data.texto
-            alt.correta = alt_data.correta
-            alt.save()
+            for alt_data in questao_data.alternativas:
+                alt = get_object_or_404(Alternativa, id=alt_data.id, questao=questao)
+                alt.texto = alt_data.texto
+                alt.correta = alt_data.correta
+                alt.save()
 
     return {"message": "Prova atualizada com sucesso"}
 
@@ -290,26 +289,36 @@ def deletar_prova(request, prova_id: int):
 
 ################# Modulo Admin Questões (Editar e Deletar)
 
-@api.put("admin/provas/{prova_id}/questoes/{questao_id}", auth=AuthBearer())
-def editar_questao(request, prova_id:int,questao_id: int, payload: QuestaoUpdateSchema):
+@api.put("/admin/provas/{prova_id}/questoes/{questao_id}", auth=AuthBearer())
+def editar_questao(request, prova_id: int, questao_id: int, payload: QuestaoUpdateSchema):
     if not request.auth.is_admin():
         raise HttpError(403, "Apenas admins podem editar questões.")
 
-    questao = get_object_or_404(Questao, id=questao_id)
+    questao = get_object_or_404(Questao, id=questao_id, prova_id=prova_id)
     questao.enunciado = payload.enunciado
     questao.save()
 
     alternativas_existentes = {a.id: a for a in questao.alternativas.all()}
 
     for alt_data in payload.alternativas:
-        alt = alternativas_existentes.get(alt_data.id)
-        if not alt:
-            raise HttpError(404, f"Alternativa com id {alt_data.id} não pertence à questão")
-        alt.texto = alt_data.texto
-        alt.correta = alt_data.correta
-        alt.save()
+        if alt_data.id:
+            # Atualiza alternativa existente
+            alt = alternativas_existentes.get(alt_data.id)
+            if not alt:
+                raise HttpError(404, f"Alternativa com id {alt_data.id} não pertence à questão")
+            alt.texto = alt_data.texto
+            alt.correta = alt_data.correta
+            alt.save()
+        else:
+            # Cria nova alternativa
+            Alternativa.objects.create(
+                questao=questao,
+                texto=alt_data.texto,
+                correta=alt_data.correta
+            )
 
     return {"message": "Questão atualizada com sucesso"}
+
 
 @api.delete("admin/provas/{prova_id}/questoes/{questao_id}", auth=AuthBearer())
 def deletar_questao(request, prova_id:int ,questao_id: int):
@@ -323,12 +332,13 @@ def deletar_questao(request, prova_id:int ,questao_id: int):
 
 ################ Modulo Admin Alternativas (Editar e Deletar)
 
-@api.put("/admin/provas/{prova_id}/questoes/{questao_id}/alternativas", auth=AuthBearer())
+@api.put("/admin/provas/{prova_id}/questoes/{questao_id}/alternativas/{alternativa_id}", auth=AuthBearer())
 def editar_alternativas(
     request,
     prova_id: int,
     questao_id: int,
-    payload: List[AlternativaUpdateSchema]
+    alternativa_id: int,
+    payload: AlternativaUpdateSchema
 ):
     if not request.auth.is_admin():
         raise HttpError(403, "Apenas admins podem editar alternativas.")
@@ -336,30 +346,15 @@ def editar_alternativas(
     prova = get_object_or_404(Prova, id=prova_id)
     questao = get_object_or_404(Questao, id=questao_id, prova=prova)
 
-    alternativas_existentes = {a.id: a for a in questao.alternativas.all()}
+    alternativa = get_object_or_404(Alternativa, id=alternativa_id, questao=questao)
 
-    atualizadas = []
-    criadas = []
-
-    for alt_data in payload:
-        if alt_data.id and alt_data.id in alternativas_existentes:
-            alt = alternativas_existentes[alt_data.id]
-            alt.texto = alt_data.texto
-            alt.correta = alt_data.correta
-            alt.save()
-            atualizadas.append(alt.id)
-        else:
-            nova = Alternativa.objects.create(
-                questao=questao,
-                texto=alt_data.texto,
-                correta=alt_data.correta
-            )
-            criadas.append(nova.id)
+    alternativa.texto = payload.texto
+    alternativa.correta = payload.correta
+    alternativa.save()
 
     return {
-        "message": "Alternativas processadas com sucesso.",
-        "alternativas_atualizadas": atualizadas,
-        "alternativas_criadas": criadas
+        "message": "Alternativa atualizada com sucesso.",
+        "alternativa_id": alternativa.id
     }
 
 @api.delete("/admin/provas/{prova_id}/questoes/{questao_id}/alternativas/{alternativa_id}", auth=AuthBearer())
@@ -460,6 +455,46 @@ def responder_prova(request,prova_id:int, payload: ResponderProvaSchema):
         "nota_percentual": nota
     }
 
+@api.put("participante/editar/{prova_id}", auth=AuthBearer())
+def editar_respostas(request, prova_id: int, payload: ResponderProvaSchema):
+    usuario = request.auth
+
+    if request.auth.role != "PARTICIPANTE":
+        raise HttpError(403, "Apenas participantes podem editar respostas.")
+
+    if prova_id != payload.prova_id:
+        raise HttpError(400, "ID da prova no path e no corpo não coincidem.")
+
+    prova = get_object_or_404(Prova, id=prova_id)
+
+    # Remove respostas anteriores do participante para essa prova
+    Resposta.objects.filter(usuario=usuario, questao__prova=prova).delete()
+
+    # Salva novas respostas
+    for r in payload.respostas:
+        questao = get_object_or_404(Questao, id=r.questao_id, prova=prova)
+        alternativa = get_object_or_404(Alternativa, id=r.alternativa_id, questao=questao)
+
+        Resposta.objects.create(
+            usuario=usuario,
+            questao=questao,
+            alternativa=alternativa
+        )
+
+    # Corrigir e calcular nota
+    respostas = Resposta.objects.filter(usuario=usuario, questao__prova=prova).select_related("alternativa")
+    total_questoes = Questao.objects.filter(prova=prova).count()
+    acertos = sum(1 for r in respostas if r.alternativa.correta)
+    nota_percentual = (acertos / total_questoes) * 100 if total_questoes > 0 else 0.0
+
+
+    return {
+        "message": "Respostas editadas com sucesso",
+        "acertos": acertos,
+        "total_questoes": total_questoes,
+        "nota_percentual": nota_percentual
+    }
+
 ################ Modulo Admin Ranking
 
 @api.get("/admin/ranking/{prova_id}", auth=AuthBearer())
@@ -467,14 +502,20 @@ def ranking_por_prova(request, prova_id: int):
     if not request.auth.is_admin():
         raise HttpError(403, "Apenas administradores podem acessar o ranking")
 
-    participantes = ProvaParticipante.objects.filter(prova_id=prova_id).select_related("participante")
+    participantes = ProvaParticipante.objects.filter(
+        prova_id=prova_id
+    ).select_related("participante")
 
     ranking = []
 
     for pp in participantes:
-        respostas = Resposta.objects.filter(prova_atribuida=pp).select_related("alternativa_escolhida")
+        respostas = Resposta.objects.filter(
+            usuario=pp.participante,
+            questao__prova_id=prova_id
+        ).select_related("alternativa")
+
         total = respostas.count()
-        acertos = sum(1 for r in respostas if r.alternativa_escolhida and r.alternativa_escolhida.correta)
+        acertos = sum(1 for r in respostas if r.alternativa and r.alternativa.correta)
 
         ranking.append({
             "participante": pp.participante.username,
@@ -489,5 +530,6 @@ def ranking_por_prova(request, prova_id: int):
         "prova_id": prova_id,
         "ranking": ranking
     }
+
 
 
