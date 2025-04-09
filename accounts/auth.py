@@ -1,4 +1,3 @@
-# accounts/auth.py
 from ninja.security import HttpBearer
 from ninja.errors import HttpError
 from ninja_jwt.authentication import JWTAuth

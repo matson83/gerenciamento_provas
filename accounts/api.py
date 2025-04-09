@@ -29,14 +29,6 @@ class RegisterSchema(Schema):
     role: str
 
 # Schemas Prova
-class ProvaResumo(Schema):
-    id: int
-    titulo: str
-    descricao: str
-
-class ProvaParticipanteBase(Schema):
-    participante_id: int
-    prova_id: int
 
 class ProvaParticipanteUpdate(Schema):
     respondida: Optional[bool] = None
@@ -52,10 +44,6 @@ class ProvaParticipanteOut(Schema):
     class Config:
         orm_mode = True
 
-class ParticipanteDashboard(Schema):
-    id: int
-    username: str
-    provas: List[ProvaResumo]
 
 class AlternativaUpdateSchema(Schema):
     id: Optional[int] = None
@@ -302,7 +290,6 @@ def editar_questao(request, prova_id: int, questao_id: int, payload: QuestaoUpda
 
     for alt_data in payload.alternativas:
         if alt_data.id:
-            # Atualiza alternativa existente
             alt = alternativas_existentes.get(alt_data.id)
             if not alt:
                 raise HttpError(404, f"Alternativa com id {alt_data.id} não pertence à questão")
@@ -310,7 +297,6 @@ def editar_questao(request, prova_id: int, questao_id: int, payload: QuestaoUpda
             alt.correta = alt_data.correta
             alt.save()
         else:
-            # Cria nova alternativa
             Alternativa.objects.create(
                 questao=questao,
                 texto=alt_data.texto,
@@ -467,10 +453,8 @@ def editar_respostas(request, prova_id: int, payload: ResponderProvaSchema):
 
     prova = get_object_or_404(Prova, id=prova_id)
 
-    # Remove respostas anteriores do participante para essa prova
     Resposta.objects.filter(usuario=usuario, questao__prova=prova).delete()
 
-    # Salva novas respostas
     for r in payload.respostas:
         questao = get_object_or_404(Questao, id=r.questao_id, prova=prova)
         alternativa = get_object_or_404(Alternativa, id=r.alternativa_id, questao=questao)
@@ -481,7 +465,6 @@ def editar_respostas(request, prova_id: int, payload: ResponderProvaSchema):
             alternativa=alternativa
         )
 
-    # Corrigir e calcular nota
     respostas = Resposta.objects.filter(usuario=usuario, questao__prova=prova).select_related("alternativa")
     total_questoes = Questao.objects.filter(prova=prova).count()
     acertos = sum(1 for r in respostas if r.alternativa.correta)

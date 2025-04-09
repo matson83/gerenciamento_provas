@@ -1,4 +1,3 @@
-# provas/routers/admin.py
 from ninja import Router, Schema
 from typing import List
 from ..models import Prova, Questao, Alternativa, ProvaParticipante

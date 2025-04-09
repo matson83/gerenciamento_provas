@@ -1,4 +1,3 @@
-# provas/routers/__init__.py
 from provas.routers.admin import router as admin_router
 
 
