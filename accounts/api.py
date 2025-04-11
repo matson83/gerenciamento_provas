@@ -1,3 +1,4 @@
+from http.client import HTTPException
 from ninja import NinjaAPI, Schema
 from accounts.auth import AuthBearer
 from django.contrib.auth import authenticate
@@ -51,6 +52,7 @@ class AlternativaUpdateSchema(Schema):
     correta: Optional[bool] = None
 
 class QuestaoUpdateSchema(Schema):
+    id: Optional[int] = None
     enunciado: Optional[str] = None
     alternativas: Optional[List[AlternativaUpdateSchema]] = None
 
@@ -253,15 +255,38 @@ def editar_prova(request, prova_id: int, payload: ProvaUpdateSchema):
 
     if payload.questoes:
         for questao_data in payload.questoes:
-            questao = get_object_or_404(Questao, id=questao_data.id, prova=prova)
-            questao.enunciado = questao_data.enunciado
-            questao.save()
+            if questao_data.id:
+                questao = Questao.objects.filter(id=questao_data.id, prova=prova).first()
+                if questao:
+                    if questao_data.enunciado:
+                        questao.enunciado = questao_data.enunciado
+                    questao.save()
 
-            for alt_data in questao_data.alternativas:
-                alt = get_object_or_404(Alternativa, id=alt_data.id, questao=questao)
-                alt.texto = alt_data.texto
-                alt.correta = alt_data.correta
-                alt.save()
+                    if questao_data.alternativas:
+                        for alt_data in questao_data.alternativas:
+                            alternativa = Alternativa.objects.filter(id=alt_data.id, questao=questao).first()
+                            if alternativa:
+                                if alt_data.texto is not None:
+                                    alternativa.texto = alt_data.texto
+                                if alt_data.correta is not None:
+                                    alternativa.correta = alt_data.correta
+                                alternativa.save()
+                else:
+                    raise HTTPException(status_code=404, detail=f"Questão com id {questao_data.id} não encontrada.")
+            else:
+                # Cria nova questão
+                nova_questao = Questao.objects.create(
+                    prova=prova,
+                    enunciado=questao_data.enunciado or ""
+                )
+                if questao_data.alternativas:
+                    for alt_data in questao_data.alternativas:
+                        Alternativa.objects.create(
+                            questao=nova_questao,
+                            texto=alt_data.texto or "",
+                            correta=alt_data.correta or False
+                        )
+
 
     return {"message": "Prova atualizada com sucesso"}
 
@@ -425,11 +450,11 @@ def responder_prova(request,prova_id:int, payload: ResponderProvaSchema):
 
     for resposta in payload.respostas:
         obj, _ = Resposta.objects.update_or_create(
-            prova_atribuida=prova_participante,
+            # prova_atribuida=prova_participante,
             questao_id=resposta.questao_id,
-            defaults={"alternativa_escolhida_id": resposta.alternativa_id}
+            defaults={"alternativa_id": resposta.alternativa_id}
         )
-        if obj.alternativa_escolhida.correta:
+        if obj.alternativa.correta:
             acertos += 1
 
     nota = round((acertos / total) * 100, 2)
