@@ -521,9 +521,9 @@ python manage.py runserver
 ### Para os DELETE de prova,questão e alternativa :
 #### Usando o token access do admin gerado ao logar no Bearer Token
 
-##### http://127.0.0.1:8000/api/admin/provas/{prova_id}
-##### http://127.0.0.1:8000/api/admin/provas/{prova_id}/questoes/{questao_id}
-##### http://127.0.0.1:8000/api/admin/provas/{prova_id}/questoes/{questao_id}/alternativas/{alternativa_id}
+### DELETE http://127.0.0.1:8000/api/admin/provas/{prova_id}
+### DELETE http://127.0.0.1:8000/api/admin/provas/{prova_id}/questoes/{questao_id}
+### DELETE http://127.0.0.1:8000/api/admin/provas/{prova_id}/questoes/{questao_id}/alternativas/{alternativa_id}
 
 
 
